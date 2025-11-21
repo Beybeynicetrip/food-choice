@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今天吃什么？ - 厦门美食大转盘</title>
+    <style>
+        /* 全局样式 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+        }
+
+        /* 艺术字体背景容器 */
+        #bg-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            overflow: hidden;
+            opacity: 0.4; /* 背景淡一点，不要抢戏 */
+        }
+
+        .art-text {
+            position: absolute;
+            white-space: nowrap;
+            user-select: none;
+            font-weight: bold;
+            filter: blur(1px);
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+            100% { transform: translateY(0) rotate(0deg); }
+        }
+
+        /* 主界面容器 */
+        .container {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: #333;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px 30px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        /* 转盘外壳 */
+        .wheel-wrapper {
+            position: relative;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            border: 10px solid #fff;
+            background: #fff;
+        }
+
+        /* 转盘Canvas */
+        #wheelCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            transition: transform 4s cubic-bezier(0.25, 0.1, 0.25, 1); /* 缓动动画 */
+        }
+
+        /* 指针 */
+        .pointer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 60px;
+            height: 60px;
+            background: #ff4757;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            z-index: 20;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .pointer::before {
+            content: '';
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 0 15px 30px 15px;
+            border-style: solid;
+            border-color: transparent transparent #ff4757 transparent;
+        }
+
+        /* 结果弹窗 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: #fff;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            animation: popIn 0.3s ease-out;
+            max-width: 80%;
+        }
+
+        .winner-text {
+            font-size: 2.5rem;
+            color: #ff4757;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .close-btn {
+            padding: 10px 30px;
+            background: #2ed573;
+            color: #fff;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .close-btn:hover {
+            background: #26af61;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        /* 适配小屏幕 */
+        @media (max-width: 600px) {
+            .wheel-wrapper {
+                width: 350px;
+                height: 350px;
+            }
+            h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 动态艺术字背景 -->
+    <div id="bg-container"></div>
+
+    <!-- 主体内容 -->
+    <div class="container">
+        <h1>今天吃什么？</h1>
+        <div class="wheel-wrapper">
+            <canvas id="wheelCanvas" width="1000" height="1000"></canvas>
+            <div class="pointer" onclick="startSpin()">GO</div>
+        </div>
+    </div>
+
+    <!-- 结果弹窗 -->
+    <div class="modal" id="resultModal">
+        <div class="modal-content">
+            <h2>🎉 命中注定去吃 🎉</h2>
+            <div class="winner-text" id="winnerText"></div>
+            <button class="close-btn" onclick="closeModal()">好的，这就去！</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. 数据列表
+        const list = [
+            "延边双门洞·炭火烤肉", "羔羊地带", "盟重烧烤", "霸腹烤肉", "萍姐火锅", 
+            "老门框四季爆肚涮肉", "吴美丽贵州酸汤火锅", "八合里潮汕牛肉火锅", "202特色排挡", "闽和南",
+            "小埕戏·流水席", "好口味煎蟹馆", "钟意牛扒", "Ay Manuela西班牙餐厅", "静香House",
+            "欧登华德国餐厅", "HZ pizza", "Paradiso窑烤披萨", "THAI1949西泰料理", "Home Thai泰谣",
+            "韩正苑", "柏·居酒屋", "町禾", "上膳", "胖达的川菜馆",
+            "黄鹤天厨（莲花店）", "傲客夜厨", "九仙湖米粉小炒", "潮福城", "富悦轩",
+            "泰蒲", "朱富贵", "王呆呆", "老湘亲", "凯宾斯基自助"
+        ];
+
+        // 2. 颜色配置 (交替颜色)
+        const colors = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#F78FB3', '#CF6A87', '#546DE5', '#E15F41'];
+
+        // 3. 初始化转盘
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const num = list.length;
+        const arc = 2 * Math.PI / num; // 每个扇形的角度
+        let currentRotation = 0; // 当前旋转角度
+        let isSpinning = false;
+
+        // 绘制转盘函数
+        function drawWheel() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = canvas.width / 2;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < num; i++) {
+                const angle = i * arc;
+                
+                // 绘制扇形
+                ctx.beginPath();
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, angle, angle + arc);
+                ctx.lineTo(centerX, centerY);
+                ctx.fill();
+
+                // 绘制文字
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle + arc / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 24px Microsoft YaHei"; // 字体大小适配
+                
+                // 由于选项较多，只显示前几个字，或者缩小字体
+                let text = list[i];
+                if (text.length > 6) {
+                    text = text.substring(0, 6) + "..";
+                }
+                
+                ctx.fillText(text, radius - 40, 10); // 距离边缘的距离
+                ctx.restore();
+            }
+        }
+
+        drawWheel();
+
+        // 4. 旋转逻辑
+        function startSpin() {
+            if (isSpinning) return;
+            isSpinning = true;
+
+            // 计算随机圈数 (5-10圈) + 随机角度
+            const randomSpins = Math.floor(Math.random() * 5) + 5; 
+            const randomDegree = Math.floor(Math.random() * 360);
+            
+            // 目标角度 (加上之前的角度，保证接着转)
+            const targetRotation = currentRotation + (randomSpins * 360) + randomDegree;
+            
+            // 设置 CSS 旋转
+            canvas.style.transform = `rotate(${targetRotation}deg)`;
+            
+            // 记录当前角度供下次使用
+            currentRotation = targetRotation;
+
+            // 等待动画结束后显示结果 (4秒)
+            setTimeout(() => {
+                isSpinning = false;
+                showResult(targetRotation);
+            }, 4000);
+        }
+
+        // 5. 计算结果
+        function showResult(rotation) {
+            // 规范化角度到 0-360
+            const actualRotation = rotation % 360;
+            
+            // Canvas 的 0 度通常在 3 点钟方向。
+            // 我们的指针在 12 点钟方向 (-90度)。
+            // 旋转是顺时针。
+            // 计算指针指向的索引。
+            
+            // 修正角度体系
+            let degrees = 360 - actualRotation + 90; 
+            if (degrees >= 360) degrees -= 360;
+            
+            const index = Math.floor(degrees / (360 / num));
+            
+            const winner = list[index];
+            
+            // 显示弹窗
+            document.getElementById('winnerText').innerText = winner;
+            document.getElementById('resultModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('resultModal').style.display = 'none';
+        }
+
+        // 6. 生成动态艺术字背景
+        function createBackground() {
+            const container = document.getElementById('bg-container');
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            // 放置50个随机文字
+            for (let i = 0; i < 50; i++) {
+                const span = document.createElement('span');
+                span.classList.add('art-text');
+                // 随机取名
+                span.innerText = list[Math.floor(Math.random() * list.length)];
+                
+                // 随机样式
+                const size = Math.floor(Math.random() * 30) + 14; // 字体大小 14-44px
+                const left = Math.floor(Math.random() * width);
+                const top = Math.floor(Math.random() * height);
+                const rot = Math.floor(Math.random() * 90) - 45;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+
+                span.style.fontSize = size + 'px';
+                span.style.left = left + 'px';
+                span.style.top = top + 'px';
+                span.style.transform = `rotate(${rot}deg)`;
+                span.style.color = color;
+                
+                // 随机动画延迟
+                span.style.animationDuration = (Math.random() * 10 + 15) + 's';
+                span.style.animationDelay = (Math.random() * 5) + 's';
+
+                container.appendChild(span);
+            }
+        }
+
+        // 初始化背景
+        createBackground();
+
+        // 窗口大小改变时重绘背景（可选）
+        window.onresize = () => {
+            // 简单处理：不重绘转盘以免动画错位，只清空背景重新生成
+            // document.getElementById('bg-container').innerHTML = '';
+            // createBackground();
+        };
+
+    </script>
+</body>
+</html>
